@@ -25,7 +25,7 @@ const FontStyles = () => (
 // EXERCISE LIBRARY
 // ============================================================
 const EXERCISES = {
-  bench_press:        { name: 'Barbell Bench Press',       sets: 3, repMin: 8,  repMax: 12, incr: 5,   category: 'compound' },
+  chest_press_machine:{ name: 'Chest Press(Machine)',       sets: 3, repMin: 8,  repMax: 12, incr: 5,   category: 'compound' },
   incline_db_press:   { name: 'Incline DB Press',          sets: 4, repMin: 8,  repMax: 12, incr: 2.5, category: 'compound' },
   weighted_dips:      { name: 'Weighted Dips',             sets: 3, repMin: 8,  repMax: 10, incr: 2.5, category: 'compound' },
   cable_fly_low:      { name: 'Cable Fly (low-to-high)',   sets: 4, repMin: 12, repMax: 15, incr: 2.5, category: 'isolation' },
@@ -65,7 +65,7 @@ const EXERCISES = {
 };
 
 const WORKOUT_DAYS = {
-  push:  { label: 'PUSH',  color: '#f5b400', exercises: ['incline_db_press', 'bench_press', 'weighted_dips', 'cable_fly_low', 'db_shoulder_press', 'cable_lateral', 'rope_pushdown'] },
+  push:  { label: 'PUSH',  color: '#f5b400', exercises: ['incline_db_press', 'chest_press_machine', 'weighted_dips', 'cable_fly_low', 'db_shoulder_press', 'cable_lateral', 'rope_pushdown'] },
   pull:  { label: 'PULL',  color: '#3b82f6', exercises: ['deadlift', 'lat_pulldown', 'barbell_row', 'cs_db_row', 'face_pull', 'barbell_curl', 'hammer_curl'] },
   legs:  { label: 'LEGS',  color: '#ef4444', exercises: ['back_squat', 'rdl', 'leg_press', 'lying_leg_curl', 'leg_ext', 'standing_calf'] },
   upper: { label: 'UPPER', color: '#a855f7', exercises: ['incline_db_press', 'weighted_pullup', 'cable_fly_mid', 'db_shoulder_press', 'cable_lateral', 'ez_curl'] },
@@ -78,7 +78,7 @@ const DAY_CYCLE = ['push', 'pull', 'legs', 'upper', 'lower'];
 // MUSCLE MAPPING
 // ============================================================
 const EXERCISE_MUSCLES = {
-  bench_press:        { primary: ['chest'],                    secondary: ['triceps', 'shoulders'] },
+  chest_press_machine:{ primary: ['chest'],                    secondary: ['triceps', 'shoulders'] },
   incline_db_press:   { primary: ['chest'],                    secondary: ['triceps', 'shoulders'] },
   weighted_dips:      { primary: ['chest'],                    secondary: ['triceps'] },
   cable_fly_low:      { primary: ['chest'] },
