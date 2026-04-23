@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Dumbbell, Apple, TrendingUp, Plus, Minus, Check, X, Search, ScanLine, Edit3, Timer, ChevronRight, Settings, Trash2, RotateCcw, ArrowLeft, Info, Camera } from 'lucide-react';
+import { Dumbbell, Apple, TrendingUp, Plus, Minus, Check, X, Search, ScanLine, Edit3, Timer, ChevronLeft, ChevronRight, Settings, Trash2, RotateCcw, ArrowLeft, Info, Camera, Download } from 'lucide-react';
 
 // ============================================================
 // FONTS + BASE STYLES
@@ -237,6 +237,27 @@ const store = {
   }
 };
 
+async function exportAllData() {
+  const keys = await window.storage.listKeys('');
+  const out = { exportedAt: new Date().toISOString(), version: 1, data: {} };
+  for (const k of keys) {
+    const raw = await window.storage.get(k);
+    if (raw) {
+      try { out.data[k] = JSON.parse(raw.value); }
+      catch { out.data[k] = raw.value; }
+    }
+  }
+  const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `shift-backup-${todayKey()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 // ============================================================
 // PROGRESSION (double progression)
 // ============================================================
@@ -367,7 +388,6 @@ export default function ShiftTracker() {
   const [config, setConfig] = useState(null);
   const [exerciseState, setExerciseState] = useState({});
   const [history, setHistory] = useState([]);
-  const [todayFood, setTodayFood] = useState({ meals: [], weight: null });
   const [customFoods, setCustomFoods] = useState([]);
   const [recentFoods, setRecentFoods] = useState([]);
   const [activeWorkout, setActiveWorkout] = useState(null);
@@ -388,7 +408,6 @@ export default function ShiftTracker() {
 
       setExerciseState(await store.get('exercises_state', {}));
       setHistory(await store.get('workout_history', []));
-      setTodayFood(await store.get(`food:${todayKey()}`, { meals: [], weight: null }));
       setCustomFoods(await store.get('custom_foods', []));
       setRecentFoods(await store.get('recent_foods', []));
       const aw = await store.get('active_workout', null);
@@ -400,7 +419,6 @@ export default function ShiftTracker() {
   const saveConfig = async (next) => { setConfig(next); await store.set('config', next); };
   const saveExState = async (next) => { setExerciseState(next); await store.set('exercises_state', next); };
   const saveHistory = async (next) => { setHistory(next); await store.set('workout_history', next); };
-  const saveTodayFood = async (next) => { setTodayFood(next); await store.set(`food:${todayKey()}`, next); };
   const saveCustomFoods = async (next) => { setCustomFoods(next); await store.set('custom_foods', next); };
   const saveRecentFoods = async (next) => { setRecentFoods(next); await store.set('recent_foods', next); };
   const saveActiveWorkout = async (next) => {
@@ -495,8 +513,6 @@ export default function ShiftTracker() {
             {tab === 'fuel' && (
               <FuelView
                 config={config}
-                todayFood={todayFood}
-                saveTodayFood={saveTodayFood}
                 customFoods={customFoods}
                 saveCustomFoods={saveCustomFoods}
                 recentFoods={recentFoods}
@@ -936,59 +952,111 @@ function SetRow({ setNum, set, prevWeight, prevSet, target, onUpdate, onLog, onU
 // ============================================================
 // FUEL VIEW
 // ============================================================
-function FuelView({ config, todayFood, saveTodayFood, customFoods, saveCustomFoods, recentFoods, saveRecentFoods }) {
+function shiftDateKey(key, days) {
+  const [y, m, d] = key.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + days);
+  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+}
+
+function formatDateLabel(key) {
+  if (key === todayKey()) return 'TODAY';
+  if (key === shiftDateKey(todayKey(), -1)) return 'YESTERDAY';
+  const [y, m, d] = key.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  return dt.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase();
+}
+
+function FuelView({ config, customFoods, saveCustomFoods, recentFoods, saveRecentFoods }) {
   const [showAdd, setShowAdd] = useState(false);
+  const [viewDate, setViewDate] = useState(todayKey());
+  const [food, setFood] = useState({ meals: [], weight: null });
+
+  useEffect(() => {
+    (async () => {
+      const f = await store.get(`food:${viewDate}`, { meals: [], weight: null });
+      setFood(f);
+    })();
+  }, [viewDate]);
+
+  const saveFood = async (next) => {
+    setFood(next);
+    await store.set(`food:${viewDate}`, next);
+  };
+
   const targets = config.targets;
   const totals = useMemo(() => {
-    return (todayFood.meals || []).reduce((acc, m) => ({
+    return (food.meals || []).reduce((acc, m) => ({
       kcal: acc.kcal + (m.kcal || 0),
       p: acc.p + (m.protein || 0),
       c: acc.c + (m.carbs || 0),
       f: acc.f + (m.fat || 0),
     }), { kcal: 0, p: 0, c: 0, f: 0 });
-  }, [todayFood]);
+  }, [food]);
 
-  const addFood = async (food) => {
+  const addFood = async (item) => {
     const entry = {
       id: Date.now().toString(36),
       time: new Date().toISOString(),
-      name: food.name,
-      brand: food.brand || '',
-      kcal: Math.round(food.kcal),
-      protein: Math.round(food.protein * 10) / 10,
-      carbs: Math.round(food.carbs * 10) / 10,
-      fat: Math.round(food.fat * 10) / 10,
-      servingGrams: food.servingGrams || null,
-      servings: food.servings || 1,
+      name: item.name,
+      brand: item.brand || '',
+      kcal: Math.round(item.kcal),
+      protein: Math.round(item.protein * 10) / 10,
+      carbs: Math.round(item.carbs * 10) / 10,
+      fat: Math.round(item.fat * 10) / 10,
+      servingGrams: item.servingGrams || null,
+      servings: item.servings || 1,
     };
-    await saveTodayFood({ ...todayFood, meals: [...(todayFood.meals || []), entry] });
+    await saveFood({ ...food, meals: [...(food.meals || []), entry] });
 
-    const key = `${food.name}|${food.brand || ''}`;
+    const key = `${item.name}|${item.brand || ''}`;
     const filtered = recentFoods.filter(r => `${r.name}|${r.brand || ''}` !== key);
     const newRecent = [{
-      name: food.name,
-      brand: food.brand || '',
-      kcal100: food.kcal100,
-      p100: food.p100,
-      c100: food.c100,
-      f100: food.f100,
-      barcode: food.barcode || null,
+      name: item.name,
+      brand: item.brand || '',
+      kcal100: item.kcal100,
+      p100: item.p100,
+      c100: item.c100,
+      f100: item.f100,
+      barcode: item.barcode || null,
     }, ...filtered].slice(0, 20);
     await saveRecentFoods(newRecent);
     setShowAdd(false);
   };
 
   const removeMeal = async (id) => {
-    await saveTodayFood({ ...todayFood, meals: todayFood.meals.filter(m => m.id !== id) });
+    await saveFood({ ...food, meals: food.meals.filter(m => m.id !== id) });
   };
+
+  const isToday = viewDate === todayKey();
+  const isFuture = viewDate > todayKey();
 
   return (
     <div className="px-5 pt-2 slide-up">
+      <div className="flex items-center justify-between mb-3 bg-neutral-900 border border-neutral-700 rounded-xl px-2 py-1.5">
+        <button
+          onClick={() => setViewDate(shiftDateKey(viewDate, -1))}
+          className="w-9 h-9 rounded-lg bg-neutral-800 text-neutral-300 flex items-center justify-center active:scale-95">
+          <ChevronLeft size={18} />
+        </button>
+        <button
+          onClick={() => setViewDate(todayKey())}
+          className="flex-1 text-center font-display tracking-wider text-base text-white">
+          {formatDateLabel(viewDate)}
+        </button>
+        <button
+          onClick={() => setViewDate(shiftDateKey(viewDate, 1))}
+          disabled={isToday}
+          className="w-9 h-9 rounded-lg bg-neutral-800 text-neutral-300 flex items-center justify-center active:scale-95 disabled:opacity-30">
+          <ChevronRight size={18} />
+        </button>
+      </div>
+
       <div className="bg-gradient-to-br from-neutral-800 to-neutral-900 border border-neutral-700 rounded-2xl p-5 mb-4">
         <div className="flex items-center gap-5">
           <CalorieRing consumed={totals.kcal} target={targets.kcal} />
           <div className="flex-1 min-w-0">
-            <div className="font-mono text-[10px] text-neutral-400 uppercase tracking-widest">Today</div>
+            <div className="font-mono text-[10px] text-neutral-400 uppercase tracking-widest">{isToday ? 'Today' : formatDateLabel(viewDate)}</div>
             <div className="font-display text-5xl leading-none text-white">{totals.kcal}</div>
             <div className="font-mono text-xs text-neutral-400 mt-1">
               / {targets.kcal} kcal · <span className="text-amber-400">{Math.max(0, targets.kcal - totals.kcal)} left</span>
@@ -1002,22 +1070,26 @@ function FuelView({ config, todayFood, saveTodayFood, customFoods, saveCustomFoo
         </div>
       </div>
 
-      <button
-        onClick={() => setShowAdd(true)}
-        className="w-full mb-4 py-3 rounded-xl bg-amber-400 text-black font-display text-lg tracking-wider flex items-center justify-center gap-2"
-      >
-        <Plus size={18} /> LOG FOOD
-      </button>
+      {!isFuture && (
+        <button
+          onClick={() => setShowAdd(true)}
+          className="w-full mb-4 py-3 rounded-xl bg-amber-400 text-black font-display text-lg tracking-wider flex items-center justify-center gap-2"
+        >
+          <Plus size={18} /> LOG FOOD
+        </button>
+      )}
 
       <div className="mb-4">
-        <div className="font-mono text-[10px] text-neutral-400 uppercase tracking-widest mb-2 px-1">Today's Log</div>
-        {(!todayFood.meals || todayFood.meals.length === 0) ? (
+        <div className="font-mono text-[10px] text-neutral-400 uppercase tracking-widest mb-2 px-1">
+          {isToday ? "Today's Log" : 'Log'}
+        </div>
+        {(!food.meals || food.meals.length === 0) ? (
           <div className="bg-neutral-900 border border-neutral-700 border-dashed rounded-xl p-8 text-center">
-            <div className="text-neutral-600 text-sm">Nothing logged yet</div>
+            <div className="text-neutral-600 text-sm">Nothing logged</div>
           </div>
         ) : (
           <div className="space-y-2">
-            {[...todayFood.meals].reverse().map(m => (
+            {[...food.meals].reverse().map(m => (
               <div key={m.id} className="bg-neutral-900 border border-neutral-700 rounded-xl px-4 py-3 flex items-center gap-3">
                 <div className="flex-1 min-w-0">
                   <div className="text-white text-sm font-medium truncate">{m.name}</div>
@@ -1565,7 +1637,7 @@ function CustomFoodForm({ customFoods, saveCustomFoods, onPick }) {
 // ============================================================
 // STATS VIEW
 // ============================================================
-function StatsView({ history, exerciseState }) {
+function StatsView({ config, history, exerciseState }) {
   const keyLifts = ['bench_press', 'back_squat', 'deadlift', 'db_shoulder_press', 'barbell_row'];
 
   const liftData = useMemo(() => {
@@ -1595,6 +1667,8 @@ function StatsView({ history, exerciseState }) {
         <StatCard label="Sets" value={totalSets} />
         <StatCard label="Volume" value={`${Math.round(totalVolume/1000)}k`} suffix="lb" />
       </div>
+
+      <NutritionAverages targets={config.targets} />
 
       <VolumeBreakdown history={history} />
 
@@ -1640,6 +1714,62 @@ function StatsView({ history, exerciseState }) {
             })}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function NutritionAverages({ targets }) {
+  const [avg, setAvg] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      const keys = await window.storage.listKeys('food:');
+      const cutoff = shiftDateKey(todayKey(), -6);
+      const recent = keys.filter(k => k.slice(5) >= cutoff);
+      if (recent.length === 0) { setAvg({ days: 0 }); return; }
+      let kcal = 0, p = 0, c = 0, f = 0;
+      for (const k of recent) {
+        const raw = await window.storage.get(k);
+        if (!raw) continue;
+        const day = JSON.parse(raw.value);
+        for (const m of (day.meals || [])) {
+          kcal += m.kcal || 0; p += m.protein || 0; c += m.carbs || 0; f += m.fat || 0;
+        }
+      }
+      const n = recent.length;
+      setAvg({ days: n, kcal: Math.round(kcal/n), p: Math.round(p/n), c: Math.round(c/n), f: Math.round(f/n) });
+    })();
+  }, []);
+
+  if (!avg) return null;
+  if (avg.days === 0) return null;
+
+  return (
+    <div className="mb-4">
+      <div className="font-mono text-[10px] text-neutral-400 uppercase tracking-widest mb-2 px-1 flex items-center justify-between">
+        <span>Nutrition Averages</span>
+        <span className="text-neutral-600">last {avg.days} day{avg.days === 1 ? '' : 's'}</span>
+      </div>
+      <div className="bg-neutral-900 border border-neutral-700 rounded-xl p-4">
+        <div className="flex items-baseline gap-3 mb-3">
+          <div className="font-display text-4xl text-white">{avg.kcal}</div>
+          <div className="font-mono text-xs text-neutral-400">kcal avg · target {targets.kcal}</div>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <div className="bg-neutral-800 rounded-lg px-3 py-2">
+            <div className="font-mono text-[9px] text-red-500 uppercase tracking-wider">Protein</div>
+            <div className="font-mono text-lg text-white">{avg.p}<span className="text-xs text-neutral-400">g</span></div>
+          </div>
+          <div className="bg-neutral-800 rounded-lg px-3 py-2">
+            <div className="font-mono text-[9px] text-blue-500 uppercase tracking-wider">Carbs</div>
+            <div className="font-mono text-lg text-white">{avg.c}<span className="text-xs text-neutral-400">g</span></div>
+          </div>
+          <div className="bg-neutral-800 rounded-lg px-3 py-2">
+            <div className="font-mono text-[9px] text-amber-400 uppercase tracking-wider">Fat</div>
+            <div className="font-mono text-lg text-white">{avg.f}<span className="text-xs text-neutral-400">g</span></div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -1865,6 +1995,20 @@ function SettingsModal({ config, onSave, onClose }) {
                     className="w-20 bg-black border border-neutral-700 rounded px-2 py-1 font-mono text-right text-white outline-none focus:border-amber-400" />
                   <div className="font-mono text-xs text-neutral-400">sec</div>
                 </div>
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <div className="font-mono text-[10px] text-neutral-400 uppercase tracking-widest mb-2">Data</div>
+            <div className="bg-neutral-900 border border-neutral-700 rounded-xl p-4">
+              <button
+                onClick={exportAllData}
+                className="w-full py-3 rounded-lg bg-neutral-800 font-display tracking-wider text-amber-400 flex items-center justify-center gap-2">
+                <Download size={16} /> EXPORT ALL DATA
+              </button>
+              <div className="font-mono text-[10px] text-neutral-500 mt-2 text-center">
+                Downloads a JSON backup of your workouts, food, and settings.
               </div>
             </div>
           </section>

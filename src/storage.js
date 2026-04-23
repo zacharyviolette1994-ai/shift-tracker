@@ -19,6 +19,15 @@ function makeStorage() {
     async delete(key) {
       window.localStorage.removeItem(PREFIX + key);
     },
+    async listKeys(prefix = '') {
+      const full = PREFIX + prefix;
+      const out = [];
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const k = window.localStorage.key(i);
+        if (k && k.startsWith(full)) out.push(k.slice(PREFIX.length));
+      }
+      return out;
+    },
   };
 }
 
