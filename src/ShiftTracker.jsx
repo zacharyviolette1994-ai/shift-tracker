@@ -25,7 +25,7 @@ const FontStyles = () => (
 // EXERCISE LIBRARY
 // ============================================================
 const EXERCISES = {
-  bench_press:        { name: 'Chest Press(Machine)',      sets: 3, repMin: 8,  repMax: 12, incr: 5,   category: 'compound' },
+  bench_press:        { name: 'Chest Press (Machine)',     sets: 3, repMin: 8,  repMax: 12, incr: 5,   category: 'compound' },
   incline_db_press:   { name: 'Incline DB Press',          sets: 4, repMin: 8,  repMax: 12, incr: 2.5, category: 'compound' },
   weighted_dips:      { name: 'Weighted Dips',             sets: 3, repMin: 8,  repMax: 10, incr: 2.5, category: 'compound' },
   cable_fly_low:      { name: 'Cable Fly (low-to-high)',   sets: 4, repMin: 12, repMax: 15, incr: 2.5, category: 'isolation' },
