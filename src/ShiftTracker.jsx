@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Dumbbell, Apple, TrendingUp, Plus, Minus, Check, X, Search, ScanLine, Edit3, Timer, ChevronLeft, ChevronRight, Settings, Trash2, RotateCcw, ArrowLeft, Info, Camera, Download } from 'lucide-react';
+import { Dumbbell, Apple, TrendingUp, Plus, Minus, Check, X, Search, ScanLine, Edit3, Timer, ChevronLeft, ChevronRight, Settings, Trash2, RotateCcw, ArrowLeft, Info, Camera, Download, Utensils, ShoppingCart, Square, CheckSquare } from 'lucide-react';
 
 // ============================================================
 // FONTS + BASE STYLES
@@ -237,6 +237,101 @@ const store = {
   }
 };
 
+// ============================================================
+// MEAL TEMPLATES + GROCERY (seeded on first run only)
+// ============================================================
+const SEED_TEMPLATES = [
+  {
+    id: 'tpl-breakfast',
+    name: 'BREAKFAST',
+    foods: [
+      { name: 'Oats (dry, rolled)',    kcal100: 389, p100: 17,  c100: 66, f100: 7,   grams: 120 },
+      { name: 'Milk (whole)',          kcal100: 61,  p100: 3.2, c100: 4.8, f100: 3.3, grams: 250 },
+      { name: 'Banana',                kcal100: 89,  p100: 1.1, c100: 23, f100: 0.3, grams: 118 },
+      { name: 'Whey protein powder',   kcal100: 377, p100: 80,  c100: 7,  f100: 3,   grams: 30  },
+    ],
+  },
+  {
+    id: 'tpl-lunch',
+    name: 'LUNCH',
+    foods: [
+      { name: 'White rice (cooked)',         kcal100: 130, p100: 2.7, c100: 28, f100: 0.3, grams: 300 },
+      { name: 'Chicken breast (cooked)',     kcal100: 165, p100: 31,  c100: 0,  f100: 3.6, grams: 200 },
+      { name: 'Broccoli (cooked)',           kcal100: 34,  p100: 2.8, c100: 7,  f100: 0.4, grams: 150 },
+      { name: 'Olive oil',                   kcal100: 884, p100: 0,   c100: 0,  f100: 100, grams: 30  },
+    ],
+  },
+  {
+    id: 'tpl-dinner',
+    name: 'DINNER',
+    foods: [
+      { name: 'White rice (cooked)',         kcal100: 130, p100: 2.7, c100: 28, f100: 0.3, grams: 300 },
+      { name: 'Ground beef 93/7 (cooked)',   kcal100: 182, p100: 26,  c100: 0,  f100: 8,   grams: 200 },
+      { name: 'Broccoli (cooked)',           kcal100: 34,  p100: 2.8, c100: 7,  f100: 0.4, grams: 150 },
+    ],
+  },
+  {
+    id: 'tpl-snack',
+    name: 'SNACK',
+    foods: [
+      { name: 'Greek yogurt (nonfat, plain)', kcal100: 59,  p100: 10,  c100: 3.6, f100: 0.4, grams: 200 },
+      { name: 'Banana',                       kcal100: 89,  p100: 1.1, c100: 23,  f100: 0.3, grams: 236 },
+      { name: 'Peanut butter',                kcal100: 588, p100: 25,  c100: 20,  f100: 50,  grams: 32  },
+    ],
+  },
+];
+
+const SEED_GROCERY = [
+  'Chicken breast (3 lb)',
+  'Ground beef 93/7 (3 lb)',
+  'Greek yogurt, nonfat (48 oz)',
+  'Whey protein (5 lb tub)',
+  'Rolled oats (42 oz)',
+  'White rice (5 lb bag)',
+  'Bananas (21)',
+  'Frozen broccoli (4 lb)',
+  'Peanut butter (16 oz)',
+  'Olive oil',
+  'Whole milk (½ gal)',
+];
+
+function templateTotals(tpl) {
+  return tpl.foods.reduce((acc, food) => {
+    const f = food.grams / 100;
+    return {
+      kcal: acc.kcal + food.kcal100 * f,
+      p:    acc.p    + food.p100    * f,
+      c:    acc.c    + food.c100    * f,
+      f:    acc.f    + food.f100    * f,
+    };
+  }, { kcal: 0, p: 0, c: 0, f: 0 });
+}
+
+async function logMealTemplate(template) {
+  const foodKey = `food:${todayKey()}`;
+  const current = await store.get(foodKey, { meals: [], weight: null });
+  const nowIso = new Date().toISOString();
+  const newEntries = template.foods.map((food, i) => {
+    const f = food.grams / 100;
+    return {
+      id: `${Date.now().toString(36)}-${i}`,
+      time: nowIso,
+      name: food.name,
+      brand: '',
+      kcal: Math.round(food.kcal100 * f),
+      protein: Math.round(food.p100 * f * 10) / 10,
+      carbs:   Math.round(food.c100 * f * 10) / 10,
+      fat:     Math.round(food.f100 * f * 10) / 10,
+      servingGrams: food.grams,
+      servings: null,
+    };
+  });
+  await store.set(foodKey, {
+    ...current,
+    meals: [...(current.meals || []), ...newEntries],
+  });
+}
+
 async function exportAllData() {
   const keys = await window.storage.listKeys('');
   const out = { exportedAt: new Date().toISOString(), version: 1, data: {} };
@@ -406,6 +501,8 @@ export default function ShiftTracker() {
   const [history, setHistory] = useState([]);
   const [customFoods, setCustomFoods] = useState([]);
   const [recentFoods, setRecentFoods] = useState([]);
+  const [mealTemplates, setMealTemplates] = useState([]);
+  const [grocery, setGrocery] = useState([]);
   const [activeWorkout, setActiveWorkout] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -427,6 +524,17 @@ export default function ShiftTracker() {
       setHistory(await store.get('workout_history', []));
       setCustomFoods(await store.get('custom_foods', []));
       setRecentFoods(await store.get('recent_foods', []));
+
+      let tpls = await store.get('meal_templates', null);
+      if (tpls === null) { tpls = SEED_TEMPLATES; await store.set('meal_templates', tpls); }
+      setMealTemplates(tpls);
+
+      let gl = await store.get('grocery_list', null);
+      if (gl === null) {
+        gl = SEED_GROCERY.map((text, i) => ({ id: `seed-${i}`, text, checked: false }));
+        await store.set('grocery_list', gl);
+      }
+      setGrocery(gl);
       const aw = await store.get('active_workout', null);
       if (aw) setActiveWorkout(aw);
       setLoaded(true);
@@ -438,6 +546,8 @@ export default function ShiftTracker() {
   const saveHistory = async (next) => { setHistory(next); await store.set('workout_history', next); };
   const saveCustomFoods = async (next) => { setCustomFoods(next); await store.set('custom_foods', next); };
   const saveRecentFoods = async (next) => { setRecentFoods(next); await store.set('recent_foods', next); };
+  const saveMealTemplates = async (next) => { setMealTemplates(next); await store.set('meal_templates', next); };
+  const saveGrocery = async (next) => { setGrocery(next); await store.set('grocery_list', next); };
   const saveActiveWorkout = async (next) => {
     setActiveWorkout(next);
     if (next) await store.set('active_workout', next);
@@ -536,6 +646,14 @@ export default function ShiftTracker() {
                 saveRecentFoods={saveRecentFoods}
               />
             )}
+            {tab === 'meals' && (
+              <MealsView
+                templates={mealTemplates}
+                saveTemplates={saveMealTemplates}
+                grocery={grocery}
+                saveGrocery={saveGrocery}
+              />
+            )}
             {tab === 'stats' && (
               <StatsView config={config} history={history} exerciseState={exerciseState} />
             )}
@@ -548,6 +666,7 @@ export default function ShiftTracker() {
           <div className="flex">
             <TabBtn icon={<Dumbbell size={20} />} label="TRAIN" active={tab==='train'} onClick={() => setTab('train')} />
             <TabBtn icon={<Apple size={20} />} label="FUEL" active={tab==='fuel'} onClick={() => setTab('fuel')} />
+            <TabBtn icon={<Utensils size={20} />} label="MEALS" active={tab==='meals'} onClick={() => setTab('meals')} />
             <TabBtn icon={<TrendingUp size={20} />} label="STATS" active={tab==='stats'} onClick={() => setTab('stats')} />
           </div>
         </div>
@@ -1654,6 +1773,230 @@ function CustomFoodForm({ customFoods, saveCustomFoods, onPick }) {
 // ============================================================
 // STATS VIEW
 // ============================================================
+// ============================================================
+// MEALS VIEW (templates + grocery list)
+// ============================================================
+function MealsView({ templates, saveTemplates, grocery, saveGrocery }) {
+  const [expanded, setExpanded] = useState(null);
+  const [confirmLogId, setConfirmLogId] = useState(null);
+  const [justLogged, setJustLogged] = useState(null);
+  const [newItem, setNewItem] = useState('');
+
+  const planTotals = useMemo(() => {
+    return templates.reduce((acc, tpl) => {
+      const t = templateTotals(tpl);
+      return { kcal: acc.kcal + t.kcal, p: acc.p + t.p, c: acc.c + t.c, f: acc.f + t.f };
+    }, { kcal: 0, p: 0, c: 0, f: 0 });
+  }, [templates]);
+
+  const handleLog = async (tpl) => {
+    await logMealTemplate(tpl);
+    setJustLogged(tpl.id);
+    setConfirmLogId(null);
+    setTimeout(() => setJustLogged(null), 2000);
+  };
+
+  const deleteTemplate = async (id) => {
+    await saveTemplates(templates.filter(t => t.id !== id));
+    setExpanded(null);
+  };
+
+  const updateFoodGrams = async (tplId, foodIdx, grams) => {
+    const next = templates.map(t => {
+      if (t.id !== tplId) return t;
+      return { ...t, foods: t.foods.map((f, i) => i === foodIdx ? { ...f, grams } : f) };
+    });
+    await saveTemplates(next);
+  };
+
+  const removeFoodFromTemplate = async (tplId, foodIdx) => {
+    const next = templates.map(t => {
+      if (t.id !== tplId) return t;
+      return { ...t, foods: t.foods.filter((_, i) => i !== foodIdx) };
+    });
+    await saveTemplates(next);
+  };
+
+  const toggleGrocery = async (id) => {
+    await saveGrocery(grocery.map(g => g.id === id ? { ...g, checked: !g.checked } : g));
+  };
+
+  const removeGrocery = async (id) => {
+    await saveGrocery(grocery.filter(g => g.id !== id));
+  };
+
+  const addGrocery = async () => {
+    const text = newItem.trim();
+    if (!text) return;
+    await saveGrocery([...grocery, { id: Date.now().toString(36), text, checked: false }]);
+    setNewItem('');
+  };
+
+  const clearChecked = async () => {
+    await saveGrocery(grocery.filter(g => !g.checked));
+  };
+
+  return (
+    <div className="px-5 pt-2 slide-up">
+      {/* Daily plan summary */}
+      {templates.length > 0 && (
+        <div className="bg-gradient-to-br from-neutral-800 to-neutral-900 border border-neutral-700 rounded-2xl p-4 mb-4">
+          <div className="font-mono text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Full day if you log it all</div>
+          <div className="flex items-baseline gap-3">
+            <div className="font-display text-4xl text-amber-400">{Math.round(planTotals.kcal)}</div>
+            <div className="font-mono text-xs text-neutral-400">kcal</div>
+          </div>
+          <div className="flex gap-3 mt-2 font-mono text-xs">
+            <span className="text-red-500">P {Math.round(planTotals.p)}g</span>
+            <span className="text-blue-500">C {Math.round(planTotals.c)}g</span>
+            <span className="text-amber-400">F {Math.round(planTotals.f)}g</span>
+          </div>
+        </div>
+      )}
+
+      {/* Templates */}
+      <div className="mb-5">
+        <div className="font-mono text-[10px] text-neutral-400 uppercase tracking-widest mb-2 px-1">Meal Templates</div>
+        {templates.length === 0 ? (
+          <div className="bg-neutral-900 border border-neutral-700 border-dashed rounded-xl p-8 text-center">
+            <div className="text-neutral-600 text-sm">No templates. Hit the + below to add one.</div>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {templates.map(tpl => {
+              const t = templateTotals(tpl);
+              const isExpanded = expanded === tpl.id;
+              const isLogged = justLogged === tpl.id;
+              return (
+                <div key={tpl.id} className="bg-neutral-900 border border-neutral-700 rounded-xl overflow-hidden">
+                  <div className="flex items-center gap-2 px-3 py-3">
+                    <button
+                      onClick={() => setExpanded(isExpanded ? null : tpl.id)}
+                      className="flex-1 min-w-0 text-left">
+                      <div className="font-display text-lg tracking-wider text-white truncate">{tpl.name}</div>
+                      <div className="font-mono text-[11px] text-neutral-400 truncate">
+                        {tpl.foods.length} foods · {Math.round(t.kcal)} kcal · P{Math.round(t.p)} C{Math.round(t.c)} F{Math.round(t.f)}
+                      </div>
+                    </button>
+                    <button
+                      onClick={() => setConfirmLogId(tpl.id)}
+                      className={`px-4 py-2 rounded-lg font-display tracking-wider text-sm flex-shrink-0 transition-all ${
+                        isLogged ? 'bg-emerald-800 text-emerald-300' : 'bg-amber-400 text-black active:scale-95'
+                      }`}>
+                      {isLogged ? <><Check size={14} className="inline mr-1" />LOGGED</> : 'LOG'}
+                    </button>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="border-t border-neutral-800 bg-black/30 p-3 space-y-2">
+                      {tpl.foods.map((food, i) => (
+                        <div key={i} className="flex items-center gap-2 text-sm">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-white truncate">{food.name}</div>
+                          </div>
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            value={food.grams}
+                            onChange={e => updateFoodGrams(tpl.id, i, Number(e.target.value) || 0)}
+                            className="w-16 bg-neutral-900 border border-neutral-700 rounded px-2 py-1 font-mono text-sm text-white text-right outline-none focus:border-amber-400" />
+                          <span className="font-mono text-[10px] text-neutral-500 w-4">g</span>
+                          <button onClick={() => removeFoodFromTemplate(tpl.id, i)} className="p-1 text-neutral-700">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        onClick={() => deleteTemplate(tpl.id)}
+                        className="w-full mt-2 py-2 rounded-lg border border-red-900 text-red-500 font-mono text-xs tracking-wider">
+                        DELETE TEMPLATE
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <button
+          onClick={() => {
+            const id = 'tpl-' + Date.now().toString(36);
+            saveTemplates([...templates, { id, name: 'NEW MEAL', foods: [] }]);
+            setExpanded(id);
+          }}
+          className="w-full mt-2 py-2 rounded-lg border border-neutral-700 border-dashed text-neutral-400 font-mono text-xs tracking-wider flex items-center justify-center gap-1">
+          <Plus size={14} /> NEW TEMPLATE
+        </button>
+      </div>
+
+      {/* Grocery list */}
+      <div className="mb-5">
+        <div className="font-mono text-[10px] text-neutral-400 uppercase tracking-widest mb-2 px-1 flex items-center justify-between">
+          <span className="flex items-center gap-1.5"><ShoppingCart size={12} /> Grocery List</span>
+          {grocery.some(g => g.checked) && (
+            <button onClick={clearChecked} className="text-amber-400 normal-case tracking-normal font-mono text-[10px]">clear checked</button>
+          )}
+        </div>
+        <div className="bg-neutral-900 border border-neutral-700 rounded-xl p-2 space-y-1">
+          {grocery.length === 0 ? (
+            <div className="text-neutral-600 text-sm p-4 text-center">List is empty</div>
+          ) : grocery.map(item => (
+            <div key={item.id} className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-neutral-800">
+              <button onClick={() => toggleGrocery(item.id)} className="flex-shrink-0">
+                {item.checked
+                  ? <CheckSquare size={18} className="text-amber-400" />
+                  : <Square size={18} className="text-neutral-600" />}
+              </button>
+              <span className={`flex-1 text-sm ${item.checked ? 'text-neutral-600 line-through' : 'text-white'}`}>
+                {item.text}
+              </span>
+              <button onClick={() => removeGrocery(item.id)} className="p-1 text-neutral-700">
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+          <div className="flex items-center gap-2 px-2 pt-2 border-t border-neutral-800">
+            <Plus size={16} className="text-neutral-500 flex-shrink-0" />
+            <input
+              value={newItem}
+              onChange={e => setNewItem(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') addGrocery(); }}
+              placeholder="Add item…"
+              className="flex-1 bg-transparent text-sm text-white outline-none py-2" />
+            {newItem.trim() && (
+              <button onClick={addGrocery} className="px-3 py-1 rounded bg-amber-400 text-black font-mono text-xs tracking-wider">
+                ADD
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {confirmLogId && (() => {
+        const tpl = templates.find(t => t.id === confirmLogId);
+        if (!tpl) return null;
+        const t = templateTotals(tpl);
+        return (
+          <Modal onClose={() => setConfirmLogId(null)}>
+            <div className="font-display text-2xl mb-2">LOG {tpl.name}?</div>
+            <div className="text-neutral-300 text-sm mb-1">
+              Adds {tpl.foods.length} foods to today's log.
+            </div>
+            <div className="font-mono text-xs text-neutral-400 mb-4">
+              {Math.round(t.kcal)} kcal · P{Math.round(t.p)}g · C{Math.round(t.c)}g · F{Math.round(t.f)}g
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setConfirmLogId(null)} className="flex-1 py-3 rounded-lg border border-neutral-700 text-neutral-300 font-display tracking-wider">CANCEL</button>
+              <button onClick={() => handleLog(tpl)} className="flex-1 py-3 rounded-lg bg-amber-400 text-black font-display tracking-wider">LOG</button>
+            </div>
+          </Modal>
+        );
+      })()}
+    </div>
+  );
+}
+
 function StatsView({ config, history, exerciseState }) {
   const keyLifts = ['bench_press', 'back_squat', 'deadlift', 'db_shoulder_press', 'barbell_row'];
 
