@@ -564,7 +564,13 @@ export default function ShiftTracker() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-neutral-100 font-body pb-20 relative overflow-hidden">
+    <div
+      className="min-h-screen bg-black text-neutral-100 font-body relative overflow-hidden"
+      style={{
+        paddingTop: 'env(safe-area-inset-top)',
+        paddingBottom: activeWorkout ? 'env(safe-area-inset-bottom)' : 'calc(env(safe-area-inset-bottom) + 4.5rem)',
+      }}
+    >
       <FontStyles />
 
       <div className="pointer-events-none fixed inset-0 z-0 opacity-40" style={{
@@ -652,6 +658,10 @@ export default function ShiftTracker() {
                 saveTemplates={saveMealTemplates}
                 grocery={grocery}
                 saveGrocery={saveGrocery}
+                customFoods={customFoods}
+                saveCustomFoods={saveCustomFoods}
+                recentFoods={recentFoods}
+                targets={config.targets}
               />
             )}
             {tab === 'stats' && (
@@ -662,7 +672,10 @@ export default function ShiftTracker() {
       </div>
 
       {!activeWorkout && (
-        <div className="fixed bottom-0 left-0 right-0 z-20 bg-black/95 backdrop-blur border-t border-neutral-800">
+        <div
+          className="fixed bottom-0 left-0 right-0 z-20 bg-black/95 backdrop-blur border-t border-neutral-800"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        >
           <div className="flex">
             <TabBtn icon={<Dumbbell size={20} />} label="TRAIN" active={tab==='train'} onClick={() => setTab('train')} />
             <TabBtn icon={<Apple size={20} />} label="FUEL" active={tab==='fuel'} onClick={() => setTab('fuel')} />
@@ -1363,7 +1376,7 @@ function BarcodeScanner({ onDetect, onClose }) {
   }, []);
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black">
+    <div className="fixed inset-0 z-[60] bg-black" style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
       <div className="h-full flex flex-col">
         <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800 bg-black relative z-10">
           <div className="font-display text-2xl tracking-wider text-white">SCAN</div>
@@ -1465,7 +1478,7 @@ function AddFoodModal({ onClose, onAdd, customFoods, saveCustomFoods, recentFood
   }
 
   return (
-    <div className="fixed inset-0 z-30 bg-black/95 backdrop-blur-sm">
+    <div className="fixed inset-0 z-30 bg-black/95 backdrop-blur-sm" style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
       <div className="h-full flex flex-col slide-up">
         <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
           <div className="font-display text-2xl tracking-wider">LOG FOOD</div>
@@ -1610,7 +1623,7 @@ function FoodPortionScreen({ food, onClose, onAdd }) {
   const f = compute(food.f100);
 
   return (
-    <div className="fixed inset-0 z-40 bg-black">
+    <div className="fixed inset-0 z-40 bg-black" style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
       <div className="h-full flex flex-col slide-up">
         <div className="flex items-center gap-3 px-4 py-3 border-b border-neutral-800">
           <button onClick={onClose} className="p-1 text-neutral-300"><ArrowLeft size={22} /></button>
@@ -1776,11 +1789,12 @@ function CustomFoodForm({ customFoods, saveCustomFoods, onPick }) {
 // ============================================================
 // MEALS VIEW (templates + grocery list)
 // ============================================================
-function MealsView({ templates, saveTemplates, grocery, saveGrocery }) {
+function MealsView({ templates, saveTemplates, grocery, saveGrocery, customFoods, saveCustomFoods, recentFoods, targets }) {
   const [expanded, setExpanded] = useState(null);
   const [confirmLogId, setConfirmLogId] = useState(null);
   const [justLogged, setJustLogged] = useState(null);
   const [newItem, setNewItem] = useState('');
+  const [addingFoodTo, setAddingFoodTo] = useState(null);
 
   const planTotals = useMemo(() => {
     return templates.reduce((acc, tpl) => {
@@ -1817,6 +1831,25 @@ function MealsView({ templates, saveTemplates, grocery, saveGrocery }) {
     await saveTemplates(next);
   };
 
+  const addFoodToTemplate = async (tplId, item) => {
+    const next = templates.map(t => {
+      if (t.id !== tplId) return t;
+      return {
+        ...t,
+        foods: [...t.foods, {
+          name: item.name,
+          kcal100: item.kcal100,
+          p100: item.p100,
+          c100: item.c100,
+          f100: item.f100,
+          grams: item.servingGrams || 100,
+        }],
+      };
+    });
+    await saveTemplates(next);
+    setAddingFoodTo(null);
+  };
+
   const toggleGrocery = async (id) => {
     await saveGrocery(grocery.map(g => g.id === id ? { ...g, checked: !g.checked } : g));
   };
@@ -1839,20 +1872,29 @@ function MealsView({ templates, saveTemplates, grocery, saveGrocery }) {
   return (
     <div className="px-5 pt-2 slide-up">
       {/* Daily plan summary */}
-      {templates.length > 0 && (
-        <div className="bg-gradient-to-br from-neutral-800 to-neutral-900 border border-neutral-700 rounded-2xl p-4 mb-4">
-          <div className="font-mono text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Full day if you log it all</div>
-          <div className="flex items-baseline gap-3">
-            <div className="font-display text-4xl text-amber-400">{Math.round(planTotals.kcal)}</div>
-            <div className="font-mono text-xs text-neutral-400">kcal</div>
+      {templates.length > 0 && (() => {
+        const planKcal = Math.round(planTotals.kcal);
+        const delta = planKcal - targets.kcal;
+        const deltaLabel = delta === 0
+          ? 'matches target'
+          : `${delta > 0 ? '+' : ''}${delta} vs target`;
+        const deltaColor = Math.abs(delta) < 150 ? 'text-emerald-400' : delta > 0 ? 'text-amber-400' : 'text-red-500';
+        return (
+          <div className="bg-gradient-to-br from-neutral-800 to-neutral-900 border border-neutral-700 rounded-2xl p-4 mb-4">
+            <div className="font-mono text-[10px] text-neutral-400 uppercase tracking-widest mb-1">Full day if you log it all</div>
+            <div className="flex items-baseline gap-3">
+              <div className="font-display text-4xl text-amber-400">{planKcal}</div>
+              <div className="font-mono text-xs text-neutral-400">/ {targets.kcal} kcal</div>
+              <div className={`font-mono text-[11px] ml-auto ${deltaColor}`}>{deltaLabel}</div>
+            </div>
+            <div className="flex gap-3 mt-2 font-mono text-xs">
+              <span className="text-red-500">P {Math.round(planTotals.p)}<span className="text-neutral-600">/{targets.protein}</span></span>
+              <span className="text-blue-500">C {Math.round(planTotals.c)}<span className="text-neutral-600">/{targets.carbs}</span></span>
+              <span className="text-amber-400">F {Math.round(planTotals.f)}<span className="text-neutral-600">/{targets.fat}</span></span>
+            </div>
           </div>
-          <div className="flex gap-3 mt-2 font-mono text-xs">
-            <span className="text-red-500">P {Math.round(planTotals.p)}g</span>
-            <span className="text-blue-500">C {Math.round(planTotals.c)}g</span>
-            <span className="text-amber-400">F {Math.round(planTotals.f)}g</span>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Templates */}
       <div className="mb-5">
@@ -1907,8 +1949,13 @@ function MealsView({ templates, saveTemplates, grocery, saveGrocery }) {
                         </div>
                       ))}
                       <button
+                        onClick={() => setAddingFoodTo(tpl.id)}
+                        className="w-full py-2 rounded-lg border border-amber-400/40 text-amber-400 font-mono text-xs tracking-wider flex items-center justify-center gap-1">
+                        <Plus size={14} /> ADD FOOD
+                      </button>
+                      <button
                         onClick={() => deleteTemplate(tpl.id)}
-                        className="w-full mt-2 py-2 rounded-lg border border-red-900 text-red-500 font-mono text-xs tracking-wider">
+                        className="w-full py-2 rounded-lg border border-red-900 text-red-500 font-mono text-xs tracking-wider">
                         DELETE TEMPLATE
                       </button>
                     </div>
@@ -1993,6 +2040,16 @@ function MealsView({ templates, saveTemplates, grocery, saveGrocery }) {
           </Modal>
         );
       })()}
+
+      {addingFoodTo && (
+        <AddFoodModal
+          onClose={() => setAddingFoodTo(null)}
+          onAdd={(item) => addFoodToTemplate(addingFoodTo, item)}
+          customFoods={customFoods}
+          saveCustomFoods={saveCustomFoods}
+          recentFoods={recentFoods}
+        />
+      )}
     </div>
   );
 }
@@ -2307,7 +2364,7 @@ function SettingsModal({ config, onSave, onClose }) {
   const autoFromBw = () => applyPreset(bw, goal);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-sm" style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)' }}>
       <div className="h-full flex flex-col slide-up">
         <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
           <div className="font-display text-2xl tracking-wider">SETTINGS</div>
